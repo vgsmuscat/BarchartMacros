@@ -56,7 +56,7 @@ Function Barchart(StartDate As Range, FinishDate As Range, currentdate As Range,
         Set cd = fcd.Offset(0, i - 1)
         jp = cd.Offset(0, 1) - cd - 1 'Jump Period Days
         CDEoP = cd + jp 'Current Date End of Jump Period
-        TWD = Application.WorksheetFunction.NetworkDays_Intl(sd, fd, 11, LOH) 'Total Working Day
+        twd = Application.WorksheetFunction.NetworkDays_Intl(sd, fd, 11, LOH) 'Total Working Day
         'sdSOP = sd + jp  'Start Period date of SD
         'fdSOP = fd + jp 'Finish Period Date period end
         
@@ -91,7 +91,7 @@ Function Barchart(StartDate As Range, FinishDate As Range, currentdate As Range,
                 firstperiod = i
                 firstPeriodSet = True
             End If
-            activity(i) = WDFP / TWD * 100
+            activity(i) = WDFP / twd * 100
             lastPeriod = i ' This is to capture the last column where the working days are entered, this is to help_
                            ' in rounding of to 100 the curved figures below
             'Debug.Print "activity(" & i & ") = " & activity(i)
@@ -104,7 +104,7 @@ Function Barchart(StartDate As Range, FinishDate As Range, currentdate As Range,
     
     
     ReDim curvedActivity(1 To aSize)
-    curve = GetCurve(cn)
+    curve = GetCurve(cn, twd)
     aSum = 0 'Activity Cumulative Percentage sum
     ''Debug.Print "First Period = " & firstperiod & ", Last Period = " & lastPeriod
     For i = firstperiod To lastPeriod
@@ -159,15 +159,19 @@ End Function
 
 'For this Curve sheet should be part of the current file
 'Name the Range in the Curve sheet including the Curve No and its name as "Curves"
-Function GetCurve(curveNo As Integer)
-    Dim curve(100) As Variant
+'Note size here starts as 0 as in p6 curves 0 day can have some value.
+Function GetCurve(curveNo As Integer, totalWorkingDay As intger)
+    Dim curve() As Variant
     On Error GoTo debg
+    csize = 100 'Curve Size (Default)
+    If twd > 100 Then csaize = totalWorkingDay
+    ReDim curve(0 To csize)
     cn = curveNo
     arrayInitialized = LBound(dwCurves)
     If arrayInitialized = "Not Initialized" Then
-        MakeDayWiseCurves
+        MakeDayWiseCurves   'Note Day Wise cure is of size 0 to 100 - think and start from here critical
     End If
-    For i = 0 To 100
+    For i = 0 To csize
         curve(i) = dwCurves(cn + 1, i + 3)
         'Debug.Print "curve" & cn & "(" & i & ") = " & curve(i); ""
     Next
