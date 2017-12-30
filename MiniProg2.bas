@@ -2,6 +2,7 @@ Attribute VB_Name = "MiniProg2"
 
 'Created 26 Dec 17
 'Last Modified 28 Dec 17 12:14 PM
+'This miniprog is being tracked on github please keep on uploading as you make changes
 
 'Balance Work
 'Work on Barchart is totally balance, it is a variant of Barchats in Miniporg1
@@ -28,7 +29,7 @@ Attribute VB_Name = "MiniProg2"
 'All the function and sub are related and the variable are interexhanged so take care
 'Barchart function may work independed of other subs.
 Dim TW As Double, fcd As Range, sd As Range, fd As Range, LOH As Range, jp As Integer
-Dim CurveRange As Variant 'Curve Range in Active Workbook based on curve Sheet format
+Dim CurveRange_Excel As Variant 'Curve Range in Active Workbook based on curve Sheet format
 Dim dwCurves() As Variant ' Day Wise Curves based on Curve Sheet format
 Dim pCurves() As Variant 'Prorata Curves based on Curve Sheet format
 Function Barchart(StartDate As Range, FinishDate As Range, currentdate As Range, Optional curveNo, Optional ListofHolidays As Range)
@@ -117,7 +118,9 @@ Function Barchart(StartDate As Range, FinishDate As Range, currentdate As Range,
                 aSumLast = aSum + 1
             End If
             aSum = Round(aSum + activity(i), 0) ' This round off create problem for long duration activity as it exhaust the range before_
-                                                ' _completion of activity
+                                                ' _completion of activity. the curve has been modified to increase the day wise curve size as variable+
+                                                ' _but the logic has to be changed to accommodate for two types of activity one which has duration less
+                                                ' _than 100/109 and another which has durtions more than 100/109
             If aSum > 100 Then aSum = 100 'Adjustment made for rounding becoming more than 100
             'Interpolation from Curve
             For j = aSumLast To aSum
@@ -149,9 +152,7 @@ debg:
     If Err.Number <> 0 Then
         'Debug.Print "i = " & i & " -- " & Err.Description
         activity(i) = CVErr(xlErrValue) 'Check can be 0
-        
-
-        
+               
     End If
     
 End Function
@@ -164,12 +165,12 @@ Function GetCurve(curveNo As Integer, totalWorkingDay As intger)
     Dim curve() As Variant
     On Error GoTo debg
     csize = 100 'Curve Size (Default)
-    If twd > 100 Then csaize = totalWorkingDay
+    If twd > 100 Then csize = totalWorkingDay
     ReDim curve(0 To csize)
     cn = curveNo
     arrayInitialized = LBound(dwCurves)
     If arrayInitialized = "Not Initialized" Then
-        MakeDayWiseCurves   'Note Day Wise cure is of size 0 to 100 - think and start from here critical
+        MakeDayWiseCurves (csize)        'Size of day wise curve is variable. But this will create problem for activity with duration less than 100/109
     End If
     For i = 0 To csize
         curve(i) = dwCurves(cn + 1, i + 3)
@@ -183,10 +184,86 @@ debg:
         Resume Next
     End If
 End Function
-Sub LoadCurves()
-    CurveRange = ThisWorkbook.Names("Curves").RefersToRange
-End Sub
 
+'This is based on the Curve sheet
+'First row consist of header
+'First two column and last two column data is not touched
+'Data for each column is repeated 5 times to make it 0 - 100 days system
+'This can take 29 types of curves
+Sub MakeDayWiseCurves(curveSize As Integer)
+    
+    Application.SendKeys "^g ^a {DEL}" ' Clear immediate window
+    
+    Dim dwcX As Integer 'Day Wise Curve Array Size X
+    Dim dwcY As Integer 'Day Wise Curve Array Size Y
+    Dim repeater As Integer
+    repeater = Round(curveSize / 20, 0)
+    
+    dwcX = 30
+    dwcY = repeater * 20 + 4 'Added 4 for Curve No., Duration, 0 Month col. & Total
+    ReDim dwCurves(1 To dwcX, 1 To dwcY) 'Note day wise curve size starts at 1 as it represent excel range and not P6
+    If IsEmpty(CurveRange_Excel) Then LoadCurves
+    'This iterates first through row and then through columsn
+
+    For curveRow = LBound(CurveRange_Excel) To UBound(CurveRange_Excel)
+        dayCol = 1
+        Day1 = 1
+        'This iterates through all the columns in the row, ie 24
+        For curveCol = LBound(CurveRange_Excel, 2) To UBound(CurveRange_Excel, 2)
+            'This ignore the columns which are not to be interpolated/iterated
+            If Not IsError(Application.Match(curveCol, Array(1, 2, 3, 24), 0)) Then
+                dwCurves(curveRow, dayCol) = CurveRange_Excel(curveRow, curveCol)
+                'Debug.Print "Item ("; curveRow; ","; dayCol; ")", dwCurves(curveRow, dayCol)
+                dayCol = dayCol + 1
+            Else
+                'This iterates through the first row which is Title Columns
+                If curveRow = 1 Then
+                    
+                    For i = 1 To repeater
+                        dwCurves(curveRow, dayCol) = Day1
+                        'Debug.Print "Item ("; curveRow; ","; dayCol; ")", dwCurves(curveRow, dayCol)
+                        Day1 = Day1 + 1
+                        dayCol = dayCol + 1
+                    Next
+                Else
+                    For i = 1 To repeater ' Note repeater is calculated above
+                        dwCurves(curveRow, dayCol) = CurveRange_Excel(curveRow, curveCol)
+                        'Debug.Print "Item ("; curveRow; ","; dayCol; ")", dwCurves(curveRow, dayCol)
+                        dayCol = dayCol + 1
+                    Next
+                End If
+            End If
+        Next
+    Next
+    dwCurves = MakeCurves_prorata(dwCurves)
+    
+    'CheckInExcel dwCurves
+End Sub
+'use curve data based on the curve data sheet
+'first two column consist of Curve No. and Description
+'First row consist of header
+'Last Column  consist of total of values of Column 3 to Column last col'n -1
+Function MakeCurves_prorata(arr() As Variant)
+    pCurves = arr ' Prorata Curves based on curve Sheet format
+    For curveRow = 2 To UBound(pCurves)
+        sumRow = 0
+        For curveCol = 3 To UBound(pCurves) - 1
+            sumRow = sumRow + pCurves(curveRow, curveCol)
+        Next
+        If sumRow > 0 Then
+            For curveCol = 3 To UBound(pCurves) - 1
+                pCurves(curveRow, curveCol) = pCurves(curveRow, curveCol) / sumRow
+                'Debug.Print "Item ("; curveRow; ","; curveCol; ")", pCurves(curveRow, curveCol)
+                
+            Next
+        End If
+    Next
+    MakeCurves_prorata = pCurves
+End Function
+
+Sub LoadCurves()
+    CurveRange_Excel = ThisWorkbook.Names("Curves").RefersToRange
+End Sub
 
 Sub CheckInExcel(arr() As Variant, Optional Sh As Worksheet)
     On Error GoTo debg
@@ -219,71 +296,4 @@ debg:
         Resume Next
     End If
 End Sub
-'This is based on the Curve sheet
-'First row consist of header
-'First two column and last two column data is not touched
-'Data for each column is repeated 5 times to make it 0 - 100 days system
-Sub MakeDayWiseCurves()
-    
-    Application.SendKeys "^g ^a {DEL}" ' Clear immediate window
-    
-    Dim dwcX As Integer 'Day Wise Curve Array Size X
-    Dim dwcY As Integer 'Day Wise Curve Array Size Y
-    dwcX = 30
-    dwcY = 104
-    ReDim dwCurves(1 To dwcX, 1 To dwcY)
-    If IsEmpty(CurveRange) Then LoadCurves
-    For curveRow = LBound(CurveRange) To UBound(CurveRange)
-        dayCol = 1
-        Day1 = 1
-        
-        For curveCol = LBound(CurveRange, 2) To UBound(CurveRange, 2)
-            If Not IsError(Application.Match(curveCol, Array(1, 2, 3, 24), 0)) Then
-                dwCurves(curveRow, dayCol) = CurveRange(curveRow, curveCol)
-                'Debug.Print "Item ("; curveRow; ","; dayCol; ")", dwCurves(curveRow, dayCol)
-                dayCol = dayCol + 1
-            Else
-                If curveRow = 1 Then
-                For i = 1 To 5
-                    dwCurves(curveRow, dayCol) = Day1
-                    'Debug.Print "Item ("; curveRow; ","; dayCol; ")", dwCurves(curveRow, dayCol)
-                    Day1 = Day1 + 1
-                    dayCol = dayCol + 1
-                Next
-                Else
-                    For i = 1 To 5
-                        dwCurves(curveRow, dayCol) = CurveRange(curveRow, curveCol)
-                        'Debug.Print "Item ("; curveRow; ","; dayCol; ")", dwCurves(curveRow, dayCol)
-                        dayCol = dayCol + 1
-                    Next
-                End If
-            End If
-        Next
-    Next
-    dwCurves = MakeCurves_prorata(dwCurves)
-    
-    'CheckInExcel dwCurves
-End Sub
-'use curve data based on the curve data sheet
-'first two column consist of Curve No. and Description
-'First row consist of header
-'Last Column (No. 104) consist of total of values of Column 3 to Column 103
-Function MakeCurves_prorata(arr() As Variant)
-    pCurves = arr ' Prorata Curves based on curve Sheet format
-    For curveRow = 2 To UBound(pCurves)
-        sumRow = 0
-        For curveCol = 3 To 103
-            sumRow = sumRow + pCurves(curveRow, curveCol)
-        Next
-        If sumRow > 0 Then
-            For curveCol = 3 To 103
-                pCurves(curveRow, curveCol) = pCurves(curveRow, curveCol) / sumRow
-                'Debug.Print "Item ("; curveRow; ","; curveCol; ")", pCurves(curveRow, curveCol)
-                
-            Next
-        End If
-    Next
-    MakeCurves_prorata = pCurves
-End Function
-
 
